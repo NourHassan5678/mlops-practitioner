@@ -1,5 +1,6 @@
-from sklearn.feature_extraction import DictVectorizer
 import pandas as pd
+from sklearn.feature_extraction import DictVectorizer
+
 from prodml.utils import timed
 
 
