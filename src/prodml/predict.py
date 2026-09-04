@@ -12,3 +12,13 @@ class DurationPredictor:
     def predict_single(self, features: dict) -> float:
         X = self.dv.transform([features])
         return float(self.model.predict(X)[0])
+
+    def get_metadata(self):
+        """Returns model metadata for the API endpoint."""
+        return {
+            "model_name": "NYC Taxi Trip Duration Predictor",
+            "version": "0.1.0",
+            "description": """Predicts taxi trip duration based on pickup location,
+dropoff location, and distance.
+""",
+        }
