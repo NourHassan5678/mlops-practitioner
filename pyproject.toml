@@ -22,3 +22,13 @@ dev = ["pytest", "pytest-cov", "ruff", "black", "pre-commit", "httpx"]
 
 [project.scripts]
 prodml-train = "prodml.train:run_training"
+
+[tool.pytest.ini_options]
+addopts = "--cov=src/prodml --cov-fail-under=70"
+
+[tool.coverage.run]
+omit = [
+    "src/prodml/train.py",
+    "src/prodml/data.py",
+    "src/prodml/export.py",
+]

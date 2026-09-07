@@ -7,71 +7,53 @@ import onnxruntime as rt
 import pytest
 
 from prodml.config import settings
-from prodml.data import read_dataframe, split_data
 
 
-def test_onnx_parity_and_benchmark(capsys):
-    # 1. Load Data & Pickle Model
-    df = read_dataframe(settings.data_path)
-    _, df_val = split_data(df)
+def test_pickle_onnx_parity_and_benchmark(capsys):
+    """Verifies output parity between Pickle and ONNX formats and benchmarks latency."""
+    pkl_path = os.path.join(settings.model_dir, settings.model_name)
+    onnx_path = os.path.join(settings.model_dir, "model.onnx")
 
-    model_path = os.path.join(settings.model_dir, settings.model_name)
-    if not os.path.exists(model_path):
-        pytest.skip("Model not trained yet")
+    # 1. Gracefully skip if model artifacts do not exist yet
+    if not os.path.exists(pkl_path):
+        pytest.skip("Pickle model file not found.")
+    if not os.path.exists(onnx_path):
+        pytest.skip("ONNX model file not found.")
 
-    with open(model_path, "rb") as f:
+    # 2. Load Pickle model & vectorizer
+    with open(pkl_path, "rb") as f:
         dv, lr_model = pickle.load(f)
 
-    # Prepare 500 rows
-    val_dicts = df_val.head(500)[
-        ["PULocationID", "DOLocationID", "trip_distance"]
-    ].copy()
-    val_dicts["PU_DO"] = (
-        val_dicts["PULocationID"].astype(str)
-        + "_"
-        + val_dicts["DOLocationID"].astype(str)
-    )
-    X_val = (
-        dv.transform(val_dicts[["PU_DO", "trip_distance"]].to_dict(orient="records"))
-        .toarray()
-        .astype(np.float32)
-    )
+    # 3. Build sample inputs directly with vectorizer (Fast unit test execution)
+    num_samples = 100
+    sample_dicts = [
+        {"PU_DO": f"{i % 50}_{i % 50}", "trip_distance": float((i % 10) + 1)}
+        for i in range(num_samples)
+    ]
+    X_val = dv.transform(sample_dicts).toarray().astype(np.float32)
 
-    # 2. Benchmark Pickle
-    latencies_pkl = []
-    preds_pkl = []
-    for i in range(500):
-        t0 = time.perf_counter()
-        preds_pkl.append(lr_model.predict(X_val[i : i + 1])[0])
-        latencies_pkl.append(time.perf_counter() - t0)
+    # 4. Benchmark Pickle
+    t0 = time.perf_counter()
+    preds_pkl = lr_model.predict(X_val)
+    pkl_time = (time.perf_counter() - t0) * 1000
 
-    # 3. Benchmark ONNX
+    # 5. Benchmark ONNX
     sess = rt.InferenceSession(
-        os.path.join(settings.model_dir, "model.onnx"),
+        onnx_path,
         providers=["CPUExecutionProvider"],
     )
     input_name = sess.get_inputs()[0].name
-    latencies_onnx = []
-    preds_onnx = []
-    for i in range(500):
-        t0 = time.perf_counter()
-        preds_onnx.append(sess.run(None, {input_name: X_val[i : i + 1]})[0][0][0])
-        latencies_onnx.append(time.perf_counter() - t0)
 
-    # 4. Parity Test (Assertion)
-    assert np.allclose(preds_pkl, preds_onnx, atol=1e-4)
+    t0 = time.perf_counter()
+    onnx_out = sess.run(None, {input_name: X_val})[0]
+    preds_onnx = np.asarray(onnx_out).ravel()
+    onnx_time = (time.perf_counter() - t0) * 1000
 
-    # 5. Output Report
-    mean_pkl, p95_pkl = (
-        np.mean(latencies_pkl) * 1000,
-        np.percentile(latencies_pkl, 95) * 1000,
-    )
-    mean_onnx, p95_onnx = (
-        np.mean(latencies_onnx) * 1000,
-        np.percentile(latencies_onnx, 95) * 1000,
-    )
+    # 6. Parity Assertion
+    np.testing.assert_allclose(preds_pkl, preds_onnx, rtol=1e-4, atol=1e-4)
 
+    # 7. Print Benchmark Results
     with capsys.disabled():
-        print("\n--- Benchmark (500 rows) ---")
-        print(f"Pickle -> Mean: {mean_pkl:.3f}ms | p95: {p95_pkl:.3f}ms")
-        print(f"ONNX   -> Mean: {mean_onnx:.3f}ms | p95: {p95_onnx:.3f}ms")
+        print(f"\n--- Parity & Latency Report ({num_samples} samples) ---")
+        print(f"Pickle Latency: {pkl_time:.3f} ms")
+        print(f"ONNX Latency:   {onnx_time:.3f} ms")

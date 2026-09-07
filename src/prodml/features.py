@@ -4,6 +4,18 @@ from sklearn.feature_extraction import DictVectorizer
 from prodml.utils import timed
 
 
+def prepare_features(input_data: dict) -> dict:
+    """Transforms raw dictionary inputs into the feature dictionary
+    required by the vectorizer.
+    """
+    pu = input_data.get("PULocationID", "Unknown")
+    do = input_data.get("DOLocationID", "Unknown")
+    return {
+        "PU_DO": f"{pu}_{do}",
+        "trip_distance": float(input_data.get("trip_distance", 0.0)),
+    }
+
+
 @timed
 def extract_features(df_train: pd.DataFrame, df_val: pd.DataFrame) -> tuple:
     categorical = ["PU_DO"]
