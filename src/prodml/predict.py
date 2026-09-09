@@ -6,7 +6,6 @@ from prodml.config import settings
 
 class DurationPredictor:
     def __init__(self):
-        print(">>> INITIALIZING DURATION PREDICTOR AND LOADING PICKLE <<<")
         with open(os.path.join(settings.model_dir, settings.model_name), "rb") as f:
             self.dv, self.model = pickle.load(f)
 
